@@ -159,12 +159,23 @@ class OmniTrainer:
         return accelerator
 
     def create_optimizer_and_scheduler(self):
-        """Default AdamW + configurable LR Scheduler."""
-        optimizer = torch.optim.AdamW(
-            self.model.parameters(),
-            lr=self.config.learning_rate,
-            weight_decay=self.config.weight_decay,
-        )
+        """Create optimizer (AdamW or Adafactor) + configurable LR Scheduler."""
+        optimizer_type = getattr(self.config, "optimizer", "AdamW")
+        if optimizer_type.lower() == "adafactor":
+            from transformers.optimization import Adafactor
+            optimizer = Adafactor(
+                self.model.parameters(),
+                lr=self.config.learning_rate,
+                weight_decay=self.config.weight_decay,
+                scale_parameter=False,
+                relative_step=False,
+            )
+        else:
+            optimizer = torch.optim.AdamW(
+                self.model.parameters(),
+                lr=self.config.learning_rate,
+                weight_decay=self.config.weight_decay,
+            )
 
         if self.config.warmup_type == "ratio":
             final_warmup_steps = math.ceil(self.config.steps * self.config.warmup_ratio)
@@ -246,7 +257,20 @@ class OmniTrainer:
 
         # Resume if configured
         if self.config.resume_from_checkpoint:
-            self.load_checkpoint(self.config.resume_from_checkpoint)
+            checkpoint_path = self.config.resume_from_checkpoint
+            if checkpoint_path == "latest":
+                import glob
+                checkpoints = glob.glob(os.path.join(self.config.output_dir, "checkpoint-*"))
+                if checkpoints:
+                    checkpoints.sort(key=lambda x: int(os.path.basename(x).split("-")[-1]))
+                    checkpoint_path = checkpoints[-1]
+                    logger.info(f"Automatically selected latest checkpoint: {checkpoint_path}")
+                else:
+                    checkpoint_path = None
+                    logger.info("No checkpoints found to resume from, starting from scratch.")
+            
+            if checkpoint_path:
+                self.load_checkpoint(checkpoint_path)
 
         # Handle IterableDataset Epochs
         if hasattr(self.train_dataloader.dataset, "set_epoch"):

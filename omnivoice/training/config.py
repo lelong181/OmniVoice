@@ -61,6 +61,7 @@ class TrainingConfig:
     max_grad_norm: float = 1.0
     steps: int = 300000
     seed: int = 42
+    optimizer: str = "AdamW"  # "AdamW" or "Adafactor"
     lr_scheduler_type: str = "cosine"
     warmup_type: str = "ratio"
     warmup_ratio: float = 0.03

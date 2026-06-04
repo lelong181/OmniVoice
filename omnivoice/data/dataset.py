@@ -318,6 +318,8 @@ class WebDatasetReader(IterableDataReader):
         self.num_items = 0
         self.num_seconds = 0.0
         for tar_path, label_jsonl_path, num_items, num_seconds in manifests:
+            if ":" in tar_path and not tar_path.startswith("file://") and not tar_path.startswith("http"):
+                tar_path = "file://" + tar_path.replace("\\", "/")
             self.orig_urls.append(tar_path)
             self.tar_to_label[tar_path] = label_jsonl_path
             self.num_items += num_items

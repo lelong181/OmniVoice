@@ -9,8 +9,8 @@ stop_stage=1
 
 # ====== Modify as needed ======
 # GPUs to use
-GPU_IDS="0,1"
-NUM_GPUS=2
+GPU_IDS="0"
+NUM_GPUS=1
 
 # Path to your input JSONL file
 # (each line: {"id": ..., "audio_path": ..., "text": ..., "language_id": ...})
@@ -27,8 +27,8 @@ TOKENIZER_PATH="eustlb/higgs-audio-v2-tokenizer"
 
 # Training config file
 # If you encounter issues with flex_attention on your GPU, use the SDPA config instead:
-# TRAIN_CONFIG="config/train_config_finetune_sdpa.json"
-TRAIN_CONFIG="config/train_config_finetune.json"
+TRAIN_CONFIG="config/train_config_finetune_sdpa.json"
+# TRAIN_CONFIG="config/train_config_finetune.json"
 
 # Data config file
 data_config="config/data_config_finetune.json"

@@ -13,7 +13,7 @@
     "instruct_ratio": 0.0,
     "only_instruct_ratio": 0.0,
 
-    "resume_from_checkpoint": null,
+    "resume_from_checkpoint": "latest",
     "init_from_checkpoint": "k2-fsa/OmniVoice",
 
     "learning_rate": 1e-5,
@@ -21,23 +21,24 @@
     "max_grad_norm": 1.0,
     "steps": 5000,
     "seed": 42,
+    "optimizer": "Adafactor",
     "warmup_type": "ratio",
     "warmup_ratio": 0.01,
     "warmup_steps": 0,
 
-    "batch_tokens": 8192,
-    "gradient_accumulation_steps": 1,
-    "num_workers": 2,
+    "batch_tokens": 400,
+    "gradient_accumulation_steps": 16,
+    "num_workers": 1,
 
-    "mixed_precision": "bf16",
-    "allow_tf32": true,
+    "mixed_precision": "fp16",
+    "allow_tf32": false,
     "attn_implementation": "sdpa",
-    "max_sample_tokens": 2000,
+    "max_sample_tokens": 1500,
     "min_sample_tokens": 50,
-    "max_batch_size": 64,
+    "max_batch_size": 1,
 
-    "logging_steps": 50,
+    "logging_steps": 10,
     "eval_steps": 500,
-    "save_steps": 500,
+    "save_steps": 100,
     "keep_last_n_checkpoints": -1
 }
