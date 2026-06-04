@@ -41,15 +41,32 @@ logger = logging.getLogger(__name__)
 
 class TrainLogger:
     """
-    Handles logging to console and trackers (TensorBoard/WandB)
+    Handles logging to console, trackers (TensorBoard/WandB), and CSV metrics file.
     """
 
-    def __init__(self, accelerator: Accelerator, total_steps: int, logging_steps: int):
+    def __init__(
+        self,
+        accelerator: Accelerator,
+        total_steps: int,
+        logging_steps: int,
+        output_dir: Optional[str] = None,
+    ):
         self.accelerator = accelerator
         self.total_steps = total_steps
         self.logging_steps = logging_steps
         self.start_time = None
         self.progress_bar = None
+        
+        self.csv_path = None
+        if output_dir and self.accelerator.is_main_process:
+            os.makedirs(output_dir, exist_ok=True)
+            self.csv_path = os.path.join(output_dir, "metrics_log.csv")
+            import csv
+            file_exists = os.path.exists(self.csv_path)
+            with open(self.csv_path, mode="a", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                if not file_exists or os.path.getsize(self.csv_path) == 0:
+                    writer.writerow(["Step", "Loss", "LearningRate", "GradNorm", "Epoch", "StepsPerSec"])
 
     def start(self, start_step: int = 0):
         self.start_time = time.time()
@@ -84,10 +101,27 @@ class TrainLogger:
 
     def log_metrics(self, step: int, metrics: Dict[str, Any]):
         """
-        Called periodically to log to TensorBoard/WandB and console.
+        Called periodically to log to TensorBoard/WandB, CSV, and console.
         """
         # Log to trackers (TensorBoard, etc.)
         self.accelerator.log(metrics, step=step)
+
+        # Log to CSV file if initialized
+        if self.csv_path and self.accelerator.is_main_process:
+            import csv
+            try:
+                with open(self.csv_path, mode="a", newline="", encoding="utf-8") as f:
+                    writer = csv.writer(f)
+                    writer.writerow([
+                        step,
+                        f"{metrics.get('train/loss', 0.0):.4f}",
+                        f"{metrics.get('train/learning_rate', 0.0):.2e}",
+                        f"{metrics.get('train/grad_norm', 0.0):.4f}",
+                        metrics.get('train/epoch', 0),
+                        f"{metrics.get('train/steps_per_sec', 0.0):.4f}"
+                    ])
+            except Exception as e:
+                logger.warning(f"Failed to write to CSV metrics log: {e}")
 
         if self.accelerator.is_main_process:
             # Format for console log (separate from tqdm)

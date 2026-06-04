@@ -278,7 +278,7 @@ class OmniTrainer:
 
         # Logger
         train_logger = TrainLogger(
-            self.accelerator, self.config.steps, self.config.logging_steps
+            self.accelerator, self.config.steps, self.config.logging_steps, self.config.output_dir
         )
         train_logger.start(self.global_step)
 
