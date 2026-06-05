@@ -13,6 +13,11 @@ Chạy ứng dụng bằng lệnh:
 
 import os
 import sys
+
+# Thêm thư mục ffmpeg của dự án vào PATH hệ thống để pydub/librosa gọi được ffmpeg
+ffmpeg_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ffmpeg")
+if os.path.exists(ffmpeg_dir):
+    os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ["PATH"]
 import threading
 import tempfile
 import logging
@@ -81,12 +86,30 @@ class OmniVoiceApp(ctk.CTk):
         )
         self.title_label.pack(pady=20)
         
-        # Frame trạng thái nạp Model
+        # Frame phụ chứa trạng thái nạp Model & nút Chọn thiết bị
+        self.top_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.top_frame.pack(fill="x", padx=30, pady=5)
+        
         self.model_status_label = ctk.CTkLabel(
-            self, text="Đang tìm kiếm mô hình...", 
+            self.top_frame, text="Đang tìm kiếm mô hình...", 
             text_color="yellow", font=ctk.CTkFont(size=13, slant="italic")
         )
-        self.model_status_label.pack(pady=5)
+        self.model_status_label.pack(side="left")
+        
+        # Nút lựa chọn thiết bị chạy
+        self.device_label = ctk.CTkLabel(
+            self.top_frame, text="Thiết bị:", font=ctk.CTkFont(size=12, weight="bold")
+        )
+        self.device_label.pack(side="right", padx=5)
+        
+        self.device_var = ctk.StringVar(value="CUDA (GPU)" if torch.cuda.is_available() else "CPU")
+        self.device_menu = ctk.CTkSegmentedButton(
+            self.top_frame, values=["CUDA (GPU)", "CPU"],
+            variable=self.device_var, command=self.change_device
+        )
+        self.device_menu.pack(side="right", padx=10)
+        if not torch.cuda.is_available():
+            self.device_menu.configure(state="disabled")
         
         # Khu vực nhập Text
         self.text_frame = ctk.CTkFrame(self)
@@ -164,6 +187,28 @@ class OmniVoiceApp(ctk.CTk):
         )
         self.status_bar.pack(side="bottom", fill="x")
 
+    def change_device(self, value):
+        device = "cuda" if value == "CUDA (GPU)" else "cpu"
+        self.gen_btn.configure(state="disabled", text="TẠO GIỌNG NÓI (TTS)")
+        self.play_btn.configure(state="disabled")
+        self.model_status_label.configure(
+            text=f"Đang tải lại mô hình sang {device.upper()}...",
+            text_color="yellow"
+        )
+        
+        checkpoints = []
+        for path in ["exp/omnivoice_finetune", "exp"]:
+            if os.path.exists(path):
+                checkpoints.extend(glob.glob(os.path.join(path, "checkpoint-*")))
+        checkpoints = [c for c in checkpoints if os.path.isdir(c)]
+        
+        if checkpoints:
+            checkpoints.sort(key=lambda x: int(os.path.basename(x).split("-")[-1]))
+            latest_ckpt = checkpoints[-1]
+            threading.Thread(target=self.load_model_worker, args=(latest_ckpt, device), daemon=True).start()
+        else:
+            threading.Thread(target=self.load_model_worker, args=("k2-fsa/OmniVoice", device), daemon=True).start()
+
     def detect_and_load_model(self):
         # Quét checkpoint ở cả hai nơi: exp/ và exp/omnivoice_finetune/
         checkpoints = []
@@ -174,6 +219,8 @@ class OmniVoiceApp(ctk.CTk):
         # Lọc ra các thư mục hợp lệ
         checkpoints = [c for c in checkpoints if os.path.isdir(c)]
         
+        device = "cuda" if self.device_var.get() == "CUDA (GPU)" else "cpu"
+        
         if checkpoints:
             # Sắp xếp để tìm checkpoint mới nhất theo số step
             checkpoints.sort(key=lambda x: int(os.path.basename(x).split("-")[-1]))
@@ -183,7 +230,7 @@ class OmniVoiceApp(ctk.CTk):
                 text_color="lightblue"
             )
             # Chạy luồng phụ để nạp model không bị đơ giao diện
-            threading.Thread(target=self.load_model_worker, args=(latest_ckpt,), daemon=True).start()
+            threading.Thread(target=self.load_model_worker, args=(latest_ckpt, device), daemon=True).start()
             return
         
         # Nếu không có checkpoint nào, sử dụng model mặc định từ HuggingFace
@@ -191,11 +238,19 @@ class OmniVoiceApp(ctk.CTk):
             text="Không tìm thấy checkpoint. Sẽ tải và nạp mô hình gốc 'k2-fsa/OmniVoice' từ HF...",
             text_color="orange"
         )
-        threading.Thread(target=self.load_model_worker, args=("k2-fsa/OmniVoice",), daemon=True).start()
+        threading.Thread(target=self.load_model_worker, args=("k2-fsa/OmniVoice", device), daemon=True).start()
 
-    def load_model_worker(self, model_path):
+    def load_model_worker(self, model_path, device="cuda"):
         try:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            # Giải phóng bộ nhớ model cũ nếu có
+            if hasattr(self, "model") and self.model is not None:
+                del self.model
+                self.model = None
+                import gc
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            
             logging.info(f"Loading model {model_path} on {device}...")
             
             # Tự động chọn kiểu dữ liệu phù hợp
@@ -208,6 +263,7 @@ class OmniVoiceApp(ctk.CTk):
                 text=f"Đã nạp thành công: {os.path.basename(model_path)} (Chạy trên {device.upper()})",
                 text_color="green"
             )
+            self.gen_btn.configure(state="normal")
             logging.info("Model loaded successfully.")
         except Exception as e:
             self.model_status_label.configure(
@@ -250,18 +306,20 @@ class OmniVoiceApp(ctk.CTk):
             messagebox.showwarning("Cảnh báo", "Vui lòng nhập văn bản cần phát âm!")
             return
             
-        # Kiểm tra điều kiện nhân bản giọng nói
+        # Lấy nội dung text mẫu, nếu trống thì truyền None để model tự động nhận diện bằng Whisper ASR
         ref_text = self.ref_text_input.get().strip()
-        if self.ref_audio_path and not ref_text:
-            messagebox.showwarning("Cảnh báo", "Bạn đã chọn file giọng mẫu nhưng chưa nhập nội dung lời thoại tương ứng!")
-            return
+        ref_text_to_use = ref_text if ref_text else None
 
         self.gen_btn.configure(state="disabled", text="ĐANG XỬ LÝ...")
         self.play_btn.configure(state="disabled")
-        self.status_bar.configure(text="Đang sinh giọng nói...")
+        
+        if self.ref_audio_path and ref_text_to_use is None:
+            self.status_bar.configure(text="Đang nhận dạng chữ giọng mẫu bằng Whisper ASR (Lần đầu sẽ mất vài phút tải model)...")
+        else:
+            self.status_bar.configure(text="Đang sinh giọng nói...")
         
         # Chạy suy luận trên luồng phụ để tránh đơ app
-        threading.Thread(target=self.generate_worker, args=(text, ref_text), daemon=True).start()
+        threading.Thread(target=self.generate_worker, args=(text, ref_text_to_use), daemon=True).start()
 
     def generate_worker(self, text, ref_text):
         try:
