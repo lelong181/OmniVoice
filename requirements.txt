@@ -1,0 +1,24 @@
+# Thư viện core cho OmniVoice
+torch>=2.4
+torchaudio>=2.4
+transformers>=5.3.0
+accelerate
+pydub
+gradio
+tensorboardX
+webdataset
+numpy
+soundfile
+librosa
+customtkinter
+pygame
+
+# Đánh giá & Tiền xử lý (Tùy chọn)
+jiwer==3.1.0
+s3prl
+funasr
+zhconv
+zhon
+unidecode
+deep-translator
+matplotlib
